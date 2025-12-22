@@ -1,147 +1,203 @@
--- Fish It! Winter Cavern TP Hub | WindUI v1.8 (PERFECT FIXED!)
--- Fitur: Auto TP + Save Position + Auto Return saat cavern close (kalau timed)
--- Isi tab & section pasti muncul full!
+-- Fish It! Winter Cavern TP Hub | WindUI v2.0 (Notifikasi Status!)
+-- Print status diganti jadi WindUI Notify (popup toast)
+-- Auto notify saat event aktif/tutup + saat return
 
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 local Window = WindUI:CreateWindow({
     Title = "Fish It Cavern TP ❄️",
-    Folder = "FishIt",
-    IconSize = 44,
+    Folder = "FishItCavernTP",
+    IconSize = 30,
     HideSearchBar = false,
     OpenButton = {
-        Enabled = true  -- Biar bisa buka lagi di mobile setelah minimize/X
+        Enabled = true
     }
 })
 
 Window:Open()
 
 Window:Tag({
-    Title = "version 1.0.0",
+    Title = "Beta Testing",
     Icon = "zap",
     Color = Color3.fromHex("#30FF6A")
 })
 
 -- Services
 local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 
--- Config (Koordinat Winter Cavern di Christmas Island - sisi kanan cave entrance)
--- Dari update Christmas 2025: Cave selalu accessible di Christmas Island, bukan timed.
--- Koordinat lama mungkin outdated, coba test & ganti manual kalau TP gak pas ke dalam cave.
-local EVENT_POS = Vector3.new(577, -581, 8932)  -- Ganti kalau perlu
+-- Config
+local EVENT_POS = Vector3.new(577, -581, 8932)  -- Ganti kalau coord Winter Cavern beda
+local ACTIVE_HOURS = {1,3,5,7,9,11,13,15,17,19,21,23}
 local autoTP = false
+local autoReturn = false
 local tpDelay = 5
 local savedPositions = {}
 local selectedReturn = nil
+local lastStatusNotified = nil  -- Biar gak spam notify tiap detik
 
--- Fungsi TP
+-- TP Func
 local function tpTo(pos)
     local char = player.Character or player.CharacterAdded:Wait()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if hrp then
         hrp.CFrame = CFrame.new(pos)
-        print("✅ TP Sukses!")
         return true
     end
-    print("❌ HRP gak ketemu!")
     return false
 end
 
--- Auto TP Loop (tanpa cek timed, karena Winter Cavern selalu open di event 2025)
+-- Event Active?
+local function isEventActive()
+    local st = Workspace:GetServerTimeNow()
+    local t = os.date("*t", st)
+    return table.find(ACTIVE_HOURS, t.hour) and t.min < 30
+end
+
+-- Notify Status
+local function notifyStatus(message, icon)
+    WindUI:Notify({
+        Title = "Christmast Cave Status",
+        Content = message,
+        Icon = icon or "info",
+        Duration = 5
+    })
+end
+
+-- Main Loop
 task.spawn(function()
+    local wasActive = false
     while true do
-        if autoTP then
+        local active = isEventActive()
+        
+        if autoTP and active then
             tpTo(EVENT_POS)
         end
+        
+        -- Detect change status & notify sekali aja
+        if active ~= wasActive then
+            if active then
+                notifyStatus("🟢 Event Open!\nMasuk Cave Otomatis.", "zap")
+            else
+                notifyStatus("🔴 Event Closed\nSisa waktu habis.", "x")
+                if autoReturn and selectedReturn and savedPositions[selectedReturn] then
+                    tpTo(savedPositions[selectedReturn])
+                    WindUI:Notify({
+                        Title = "Auto Return",
+                        Content = "Kembali ke '" .. selectedReturn .. "'",
+                        Icon = "rocket",
+                        Duration = 5
+                    })
+                end
+            end
+        end
+        
+        wasActive = active
         task.wait(tpDelay)
     end
 end)
 
--- Tab Utama
+-- Tab
 local Tab = Window:Tab({
-    Title = "Winter Cavern",
+    Title = "Christmast Cave",
     Icon = "snowflake"
 })
 
--- Section Status & Auto
+-- Status & Auto Sec
 local StatusSec = Tab:Section({
     Title = "Status & Auto TP"
 })
 
 StatusSec:Paragraph({
-    Title = "🟢 Winter Cavern OPEN (Christmas Event)",
-    Desc = "Cave di Christmas Island sisi kanan - selalu accessible."
+    Title = "Information:",
+    Desc = "I have no information😹"
 })
 
 StatusSec:Toggle({
-    Title = "Auto TP ke Cavern",
-    Desc = "Teleport Terus Menerus",
+    Title = "Auto TP ke Cave",
+    Desc = "Spam TP Saat Open",
     Value = false,
     Callback = function(v)
         autoTP = v
-        print("Auto TP: " .. (v and "ON" or "OFF"))
     end
 })
 
 StatusSec:Slider({
-    Title = "Interval TP (detik)",
+    Title = "Interval (Second/Detik)",
     Value = {Min = 3, Max = 30, Default = 5},
     Callback = function(v)
         tpDelay = v
     end
 })
 
--- Section Save & Return
+StatusSec:Button({
+    Title = "TP ke Cavern",
+    Callback = function()
+        tpTo(EVENT_POS)
+    end
+})
+
+StatusSec:Button({
+    Title = "Click For Status Cave",
+    Callback = function()
+        local currentlyActive = isEventActive()
+        
+        if currentlyActive then
+            notifyStatus("🟢 Event Open\nBisa Masuk Winter Cavern.", "zap")
+        else
+            notifyStatus("🔴 Event Closed\nTunggu 2Jam Berikutnya", "x")
+        end
+    end
+})
+
+-- Save & Return Sec
 local SaveSec = Tab:Section({
     Title = "Save & Return Position"
 })
 
 SaveSec:Input({
-    Title = "Save Position Saat Ini",
-    Placeholder = "Nama spot (ex: Fisherman Island)",
+    Title = "Save Position",
+    Placeholder = "Your Position",
     Callback = function(name)
         if name ~= "" then
-            local pos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
-            if pos then
-                savedPositions[name] = pos
-                print("💾 Saved: " .. name)
+            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                savedPositions[name] = hrp.Position
+                WindUI:Notify({
+                    Title = "Position Saved",
+                    Content = "'" .. name .. "' disimpan!",
+                    Icon = "check",
+                    Duration = 5
+                })
             end
         end
     end
 })
 
 local dropdown = SaveSec:Dropdown({
-    Title = "Pilih Position Kembali",
-    Values = {},  -- Auto update
+    Title = "Pilih Return Position",
+    Values = {},
     Callback = function(choice)
         selectedReturn = choice
-        print("↩️ Return dipilih: " .. choice)
     end
 })
 
--- Auto refresh dropdown
 task.spawn(function()
     while true do
-        local values = {}
-        for name, _ in pairs(savedPositions) do
-            table.insert(values, {Title = name})
+        local items = {}
+        for name in pairs(savedPositions) do
+            table.insert(items, name)
         end
-        dropdown:Refresh(values)
-        task.wait(3)
+        dropdown:Refresh(items)
+        task.wait(1)
     end
 end)
 
-SaveSec:Button({
-    Title = "Teleport Kembali ke Saved Position Sebelumnya",
-    Callback = function()
-        if selectedReturn and savedPositions[selectedReturn] then
-            tpTo(savedPositions[selectedReturn])
-            print("↩️ Kembali ke " .. selectedReturn)
-        else
-            print("❌ Pilih position dulu di dropdown!")
-        end
+SaveSec:Toggle({
+    Title = "Auto Return Saat Event Tutup",
+    Desc = "ON + Pilih Posisi = Kembali Ke Posisi Sebelumnya",
+    Value = false,
+    Callback = function(v)
+        autoReturn = v
     end
 })
-
--- Section Manual
-local Manual
